@@ -1,0 +1,1616 @@
+# ============================================================
+# CUSTOMER SEGMENTATION USING DBSCAN
+# Complete End-to-End Code
+# ============================================================
+
+
+# ============================================================
+# 1. IMPORT LIBRARIES
+# ============================================================
+
+import pandas as pd
+import numpy as np
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.preprocessing import StandardScaler
+
+from sklearn.cluster import DBSCAN
+
+from sklearn.neighbors import NearestNeighbors
+
+from sklearn.metrics import silhouette_score
+
+from sklearn.decomposition import PCA
+
+
+# ============================================================
+# 2. LOAD DATASET
+# ============================================================
+
+file_path = "marketing_campaign.xlsx"
+
+df = pd.read_excel(file_path)
+
+
+print("=" * 70)
+print("DATASET OVERVIEW")
+print("=" * 70)
+
+print("Shape:", df.shape)
+
+print("\nFirst 5 rows:")
+print(df.head())
+
+print("\nColumn names:")
+print(df.columns.tolist())
+
+
+# ============================================================
+# 3. BASIC INFORMATION
+# ============================================================
+
+print("\n" + "=" * 70)
+print("DATA INFORMATION")
+print("=" * 70)
+
+df.info()
+
+
+# ============================================================
+# 4. MISSING VALUE CHECK
+# ============================================================
+
+print("\n" + "=" * 70)
+print("MISSING VALUES")
+print("=" * 70)
+
+print(df.isnull().sum())
+
+
+# ============================================================
+# 5. DUPLICATE CHECK
+# ============================================================
+
+print("\n" + "=" * 70)
+print("DUPLICATE CHECK")
+print("=" * 70)
+
+print(
+    "Duplicate rows:",
+    df.duplicated().sum()
+)
+
+
+# Remove duplicates
+
+df = df.drop_duplicates()
+
+print(
+    "Shape after removing duplicates:",
+    df.shape
+)
+
+
+# ============================================================
+# 6. HANDLE MISSING VALUES
+# ============================================================
+
+# Income contains missing values.
+# Use median imputation.
+
+df['Income'] = df['Income'].fillna(
+    df['Income'].median()
+)
+
+
+print(
+    "\nMissing Income after treatment:",
+    df['Income'].isnull().sum()
+)
+
+
+# ============================================================
+# 7. CREATE AGE
+# ============================================================
+
+df['Age'] = 2026 - df['Year_Birth']
+
+
+print("\nAge statistics:")
+
+print(
+    df['Age'].describe()
+)
+
+
+# ============================================================
+# 8. REMOVE UNREALISTIC AGE VALUES
+# ============================================================
+
+print("\nCustomers with Age > 100:")
+
+print(
+    df[df['Age'] > 100][
+        ['ID', 'Year_Birth', 'Age']
+    ]
+)
+
+
+# Keep realistic customer ages
+
+df = df[
+    (df['Age'] >= 18) &
+    (df['Age'] <= 100)
+].copy()
+
+
+print(
+    "\nShape after Age cleaning:",
+    df.shape
+)
+
+
+# ============================================================
+# 9. INCOME OUTLIER TREATMENT
+# ============================================================
+
+Q1 = df['Income'].quantile(0.25)
+
+Q3 = df['Income'].quantile(0.75)
+
+IQR = Q3 - Q1
+
+lower_bound = Q1 - 1.5 * IQR
+
+upper_bound = Q3 + 1.5 * IQR
+
+
+print("\nIncome Q1:", Q1)
+print("Income Q3:", Q3)
+print("Income IQR:", IQR)
+
+print("Lower bound:", lower_bound)
+print("Upper bound:", upper_bound)
+
+
+# Cap extreme values
+
+df['Income'] = df['Income'].clip(
+    lower=lower_bound,
+    upper=upper_bound
+)
+
+
+# ============================================================
+# 10. FEATURE ENGINEERING
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Total Product Spending
+# ------------------------------------------------------------
+
+spending_columns = [
+
+    'MntWines',
+
+    'MntFruits',
+
+    'MntMeatProducts',
+
+    'MntFishProducts',
+
+    'MntSweetProducts',
+
+    'MntGoldProds'
+
+]
+
+
+df['Total_Spending'] = (
+    df[spending_columns].sum(axis=1)
+)
+
+
+# ------------------------------------------------------------
+# Total Purchases
+# ------------------------------------------------------------
+
+purchase_columns = [
+
+    'NumWebPurchases',
+
+    'NumCatalogPurchases',
+
+    'NumStorePurchases'
+
+]
+
+
+df['Total_Purchases'] = (
+    df[purchase_columns].sum(axis=1)
+)
+
+
+# ------------------------------------------------------------
+# Total Children
+# ------------------------------------------------------------
+
+df['Total_Children'] = (
+    df['Kidhome'] +
+    df['Teenhome']
+)
+
+
+# ------------------------------------------------------------
+# Total Campaign Acceptance
+# ------------------------------------------------------------
+
+campaign_columns = [
+
+    'AcceptedCmp1',
+
+    'AcceptedCmp2',
+
+    'AcceptedCmp3',
+
+    'AcceptedCmp4',
+
+    'AcceptedCmp5'
+
+]
+
+
+df['Total_Campaign_Acceptance'] = (
+    df[campaign_columns].sum(axis=1)
+)
+
+
+# ============================================================
+# 11. DISPLAY ENGINEERED FEATURES
+# ============================================================
+
+print("\n" + "=" * 70)
+print("ENGINEERED FEATURES")
+print("=" * 70)
+
+print(
+    df[
+        [
+            'Age',
+            'Total_Spending',
+            'Total_Purchases',
+            'Total_Children',
+            'Total_Campaign_Acceptance'
+        ]
+    ].head()
+)
+
+
+# ============================================================
+# 12. SELECT FEATURES FOR DBSCAN
+# ============================================================
+
+cluster_features = [
+
+    'Income',
+
+    'Age',
+
+    'Recency',
+
+    'Total_Spending',
+
+    'Total_Purchases',
+
+    'NumDealsPurchases',
+
+    'NumWebVisitsMonth',
+
+    'Total_Children',
+
+    'Total_Campaign_Acceptance'
+
+]
+
+
+X = df[
+    cluster_features
+].copy()
+
+
+print("\n" + "=" * 70)
+print("FEATURES USED FOR DBSCAN")
+print("=" * 70)
+
+print(cluster_features)
+
+print("\nShape:", X.shape)
+
+
+# ============================================================
+# 13. CHECK MISSING VALUES
+# ============================================================
+
+print("\nMissing values:")
+
+print(
+    X.isnull().sum()
+)
+
+
+# ============================================================
+# 14. STANDARDIZATION
+# ============================================================
+
+scaler = StandardScaler()
+
+
+X_scaled = scaler.fit_transform(
+    X
+)
+
+
+print("\nScaled data shape:")
+
+print(
+    X_scaled.shape
+)
+
+
+# ============================================================
+# 15. K-DISTANCE GRAPH
+# ============================================================
+
+# min_samples = 5
+
+min_samples = 5
+
+
+neighbors = NearestNeighbors(
+    n_neighbors=min_samples
+)
+
+
+neighbors_fit = neighbors.fit(
+    X_scaled
+)
+
+
+distances, indices = (
+    neighbors_fit.kneighbors(
+        X_scaled
+    )
+)
+
+
+# Distance to kth nearest neighbor
+
+k_distances = np.sort(
+    distances[:, -1]
+)
+
+
+plt.figure(figsize=(10, 6))
+
+
+plt.plot(
+    k_distances
+)
+
+
+plt.title(
+    "K-Distance Graph for DBSCAN"
+)
+
+
+plt.xlabel(
+    "Data Points"
+)
+
+
+plt.ylabel(
+    "Distance to 5th Nearest Neighbor"
+)
+
+
+plt.grid(True)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 16. TEST DIFFERENT DBSCAN PARAMETERS
+# ============================================================
+
+eps_values = [
+
+    0.5,
+
+    0.6,
+
+    0.7,
+
+    0.8,
+
+    0.9,
+
+    1.0,
+
+    1.1,
+
+    1.2,
+
+    1.3,
+
+    1.4,
+
+    1.5
+
+]
+
+
+min_samples_values = [
+
+    3,
+
+    4,
+
+    5,
+
+    6,
+
+    8,
+
+    10
+
+]
+
+
+dbscan_results = []
+
+
+for eps in eps_values:
+
+    for min_samples in min_samples_values:
+
+
+        dbscan = DBSCAN(
+
+            eps=eps,
+
+            min_samples=min_samples
+
+        )
+
+
+        labels = dbscan.fit_predict(
+            X_scaled
+        )
+
+
+        # ----------------------------------------------------
+        # Number of clusters
+        # ----------------------------------------------------
+
+        unique_labels = set(
+            labels
+        )
+
+
+        n_clusters = len(
+            unique_labels - {-1}
+        )
+
+
+        # ----------------------------------------------------
+        # Number of noise points
+        # ----------------------------------------------------
+
+        n_noise = np.sum(
+            labels == -1
+        )
+
+
+        noise_percentage = (
+            n_noise /
+            len(labels)
+            * 100
+        )
+
+
+        # ----------------------------------------------------
+        # Silhouette Score
+        # ----------------------------------------------------
+
+        non_noise_mask = (
+            labels != -1
+        )
+
+
+        non_noise_data = (
+            X_scaled[
+                non_noise_mask
+            ]
+        )
+
+
+        non_noise_labels = (
+            labels[
+                non_noise_mask
+            ]
+        )
+
+
+        if (
+            n_clusters >= 2
+            and
+            len(non_noise_labels) > n_clusters
+        ):
+
+            silhouette = silhouette_score(
+
+                non_noise_data,
+
+                non_noise_labels
+
+            )
+
+        else:
+
+            silhouette = np.nan
+
+
+        # ----------------------------------------------------
+        # Store results
+        # ----------------------------------------------------
+
+        dbscan_results.append({
+
+            'eps': eps,
+
+            'min_samples':
+                min_samples,
+
+            'clusters':
+                n_clusters,
+
+            'noise_points':
+                n_noise,
+
+            'noise_percentage':
+                round(
+                    noise_percentage,
+                    2
+                ),
+
+            'silhouette_score':
+                silhouette
+
+        })
+
+
+# Convert results to DataFrame
+
+dbscan_results = pd.DataFrame(
+    dbscan_results
+)
+
+
+# ============================================================
+# 17. DISPLAY DBSCAN RESULTS
+# ============================================================
+
+print("\n" + "=" * 70)
+print("DBSCAN PARAMETER RESULTS")
+print("=" * 70)
+
+print(
+    dbscan_results
+)
+
+
+# ============================================================
+# 18. SORT BY SILHOUETTE SCORE
+# ============================================================
+
+dbscan_results_sorted = (
+
+    dbscan_results
+
+    .sort_values(
+
+        by='silhouette_score',
+
+        ascending=False
+
+    )
+
+)
+
+
+print("\n" + "=" * 70)
+print("TOP DBSCAN MODELS")
+print("=" * 70)
+
+
+print(
+    dbscan_results_sorted.head(10)
+)
+
+
+# ============================================================
+# 19. SELECT BEST DBSCAN MODEL
+# ============================================================
+
+# Remove models where silhouette cannot be calculated
+
+valid_results = (
+
+    dbscan_results
+
+    .dropna(
+        subset=[
+            'silhouette_score'
+        ]
+    )
+
+    .copy()
+
+)
+
+
+# Avoid extremely high noise solutions.
+# Here we allow up to 50% noise.
+
+valid_results = valid_results[
+    valid_results[
+        'noise_percentage'
+    ] < 50
+]
+
+
+if len(valid_results) == 0:
+
+    print(
+        "\nNo suitable DBSCAN model found."
+    )
+
+else:
+
+    best_dbscan = (
+        valid_results.loc[
+            valid_results[
+                'silhouette_score'
+            ].idxmax()
+        ]
+    )
+
+
+    print(
+        "\n" + "=" * 70
+    )
+
+    print(
+        "BEST DBSCAN MODEL"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    print(
+        "Best eps:",
+        best_dbscan['eps']
+    )
+
+
+    print(
+        "Best min_samples:",
+        int(
+            best_dbscan[
+                'min_samples'
+            ]
+        )
+    )
+
+
+    print(
+        "Number of clusters:",
+        int(
+            best_dbscan[
+                'clusters'
+            ]
+        )
+    )
+
+
+    print(
+        "Noise points:",
+        int(
+            best_dbscan[
+                'noise_points'
+            ]
+        )
+    )
+
+
+    print(
+        "Noise percentage:",
+        best_dbscan[
+            'noise_percentage'
+        ],
+        "%"
+    )
+
+
+    print(
+        "Silhouette Score:",
+        round(
+            best_dbscan[
+                'silhouette_score'
+            ],
+            4
+        )
+    )
+
+
+# ============================================================
+# 20. FINAL DBSCAN MODEL
+# ============================================================
+
+best_eps = float(
+    best_dbscan['eps']
+)
+
+
+best_min_samples = int(
+    best_dbscan[
+        'min_samples'
+    ]
+)
+
+
+final_dbscan = DBSCAN(
+
+    eps=best_eps,
+
+    min_samples=best_min_samples
+
+)
+
+
+dbscan_labels = (
+    final_dbscan.fit_predict(
+        X_scaled
+    )
+)
+
+
+# Add cluster labels
+
+df['DBSCAN_Cluster'] = (
+    dbscan_labels
+)
+
+
+# ============================================================
+# 21. DBSCAN CLUSTER COUNTS
+# ============================================================
+
+print("\n" + "=" * 70)
+
+print(
+    "DBSCAN CLUSTER COUNTS"
+)
+
+print(
+    "=" * 70
+)
+
+
+print(
+    df[
+        'DBSCAN_Cluster'
+    ]
+    .value_counts()
+    .sort_index()
+)
+
+
+# ============================================================
+# 22. DBSCAN CLUSTER PERCENTAGES
+# ============================================================
+
+dbscan_cluster_percentage = (
+
+    df[
+        'DBSCAN_Cluster'
+    ]
+
+    .value_counts(
+        normalize=True
+    )
+
+    .sort_index()
+
+    * 100
+
+)
+
+
+print("\nDBSCAN Cluster Percentages:")
+
+
+print(
+    dbscan_cluster_percentage
+    .round(2)
+)
+
+
+# ============================================================
+# 23. NOISE ANALYSIS
+# ============================================================
+
+noise_count = np.sum(
+    dbscan_labels == -1
+)
+
+
+noise_percentage = (
+    noise_count /
+    len(dbscan_labels)
+    * 100
+)
+
+
+print("\n" + "=" * 70)
+
+print(
+    "DBSCAN NOISE ANALYSIS"
+)
+
+print(
+    "=" * 70
+)
+
+
+print(
+    "Noise points:",
+    noise_count
+)
+
+
+print(
+    "Noise percentage:",
+    round(
+        noise_percentage,
+        2
+    ),
+    "%"
+)
+
+
+# ============================================================
+# 24. FINAL SILHOUETTE SCORE
+# ============================================================
+
+non_noise_mask = (
+    dbscan_labels != -1
+)
+
+
+dbscan_X = (
+    X_scaled[
+        non_noise_mask
+    ]
+)
+
+
+dbscan_y = (
+    dbscan_labels[
+        non_noise_mask
+    ]
+)
+
+
+n_dbscan_clusters = len(
+    set(dbscan_y)
+)
+
+
+if n_dbscan_clusters >= 2:
+
+    dbscan_silhouette = (
+        silhouette_score(
+
+            dbscan_X,
+
+            dbscan_y
+
+        )
+    )
+
+
+    print(
+        "\nFinal DBSCAN Silhouette Score:",
+        round(
+            dbscan_silhouette,
+            4
+        )
+    )
+
+
+else:
+
+    dbscan_silhouette = np.nan
+
+
+    print(
+        "\nSilhouette Score cannot be calculated."
+    )
+
+
+# ============================================================
+# 25. PCA VISUALIZATION
+# ============================================================
+
+pca = PCA(
+    n_components=2
+)
+
+
+X_pca = pca.fit_transform(
+    X_scaled
+)
+
+
+pca_df = pd.DataFrame({
+
+    'PC1':
+        X_pca[:, 0],
+
+    'PC2':
+        X_pca[:, 1],
+
+    'DBSCAN_Cluster':
+        dbscan_labels
+
+})
+
+
+plt.figure(
+    figsize=(10, 7)
+)
+
+
+sns.scatterplot(
+
+    data=pca_df,
+
+    x='PC1',
+
+    y='PC2',
+
+    hue='DBSCAN_Cluster',
+
+    palette='Set2',
+
+    s=60
+
+)
+
+
+plt.title(
+    "DBSCAN Customer Segmentation - PCA"
+)
+
+
+plt.xlabel(
+    "Principal Component 1"
+)
+
+
+plt.ylabel(
+    "Principal Component 2"
+)
+
+
+plt.legend(
+    title='DBSCAN Cluster'
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 26. DBSCAN CLUSTER PROFILE
+# ============================================================
+
+# Exclude noise (-1) from customer segment profiling
+
+clustered_customers = df[
+    df['DBSCAN_Cluster'] != -1
+].copy()
+
+
+dbscan_profile = (
+
+    clustered_customers
+
+    .groupby(
+        'DBSCAN_Cluster'
+    )[cluster_features]
+
+    .mean()
+
+)
+
+
+print("\n" + "=" * 70)
+
+print(
+    "DBSCAN CLUSTER PROFILE"
+)
+
+print(
+    "=" * 70)
+
+
+print(
+    dbscan_profile.round(2)
+)
+
+
+# ============================================================
+# 27. DBSCAN CLUSTER SIZE
+# ============================================================
+
+dbscan_size = (
+
+    clustered_customers
+
+    .groupby(
+        'DBSCAN_Cluster'
+    )
+
+    .size()
+
+    .reset_index(
+        name='Customer_Count'
+    )
+
+)
+
+
+dbscan_size[
+    'Customer_Percentage'
+] = (
+
+    dbscan_size[
+        'Customer_Count'
+    ]
+
+    / len(df)
+
+    * 100
+
+)
+
+
+dbscan_size[
+    'Customer_Percentage'
+] = (
+
+    dbscan_size[
+        'Customer_Percentage'
+    ]
+
+    .round(2)
+
+)
+
+
+print("\n" + "=" * 70)
+
+print(
+    "DBSCAN CLUSTER SIZE"
+)
+
+print(
+    "=" * 70)
+
+
+print(
+    dbscan_size
+)
+
+
+# ============================================================
+# 28. DBSCAN PROFILE HEATMAP
+# ============================================================
+
+profile_scaled = (
+
+    dbscan_profile -
+
+    dbscan_profile.mean()
+
+) / dbscan_profile.std()
+
+
+plt.figure(
+    figsize=(14, 7)
+)
+
+
+sns.heatmap(
+
+    profile_scaled,
+
+    annot=True,
+
+    fmt='.2f',
+
+    cmap='coolwarm',
+
+    center=0
+
+)
+
+
+plt.title(
+    "DBSCAN Customer Segment Profile"
+)
+
+
+plt.xlabel(
+    "Features"
+)
+
+
+plt.ylabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 29. SPENDING BY DBSCAN CLUSTER
+# ============================================================
+
+plt.figure(
+    figsize=(9, 5)
+)
+
+
+sns.barplot(
+
+    data=clustered_customers,
+
+    x='DBSCAN_Cluster',
+
+    y='Total_Spending',
+
+    estimator='mean'
+
+)
+
+
+plt.title(
+    "Average Spending by DBSCAN Cluster"
+)
+
+
+plt.xlabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.ylabel(
+    "Average Total Spending"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 30. PURCHASES BY DBSCAN CLUSTER
+# ============================================================
+
+plt.figure(
+    figsize=(9, 5)
+)
+
+
+sns.barplot(
+
+    data=clustered_customers,
+
+    x='DBSCAN_Cluster',
+
+    y='Total_Purchases',
+
+    estimator='mean'
+
+)
+
+
+plt.title(
+    "Average Purchases by DBSCAN Cluster"
+)
+
+
+plt.xlabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.ylabel(
+    "Average Total Purchases"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 31. INCOME BY DBSCAN CLUSTER
+# ============================================================
+
+plt.figure(
+    figsize=(9, 5)
+)
+
+
+sns.barplot(
+
+    data=clustered_customers,
+
+    x='DBSCAN_Cluster',
+
+    y='Income',
+
+    estimator='mean'
+
+)
+
+
+plt.title(
+    "Average Income by DBSCAN Cluster"
+)
+
+
+plt.xlabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.ylabel(
+    "Average Income"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 32. RECENCY BY DBSCAN CLUSTER
+# ============================================================
+
+plt.figure(
+    figsize=(9, 5)
+)
+
+
+sns.barplot(
+
+    data=clustered_customers,
+
+    x='DBSCAN_Cluster',
+
+    y='Recency',
+
+    estimator='mean'
+
+)
+
+
+plt.title(
+    "Average Recency by DBSCAN Cluster"
+)
+
+
+plt.xlabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.ylabel(
+    "Average Recency"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 33. CAMPAIGN ACCEPTANCE BY DBSCAN CLUSTER
+# ============================================================
+
+plt.figure(
+    figsize=(9, 5)
+)
+
+
+sns.barplot(
+
+    data=clustered_customers,
+
+    x='DBSCAN_Cluster',
+
+    y='Total_Campaign_Acceptance',
+
+    estimator='mean'
+
+)
+
+
+plt.title(
+    "Campaign Acceptance by DBSCAN Cluster"
+)
+
+
+plt.xlabel(
+    "DBSCAN Cluster"
+)
+
+
+plt.ylabel(
+    "Average Campaign Acceptance"
+)
+
+
+plt.tight_layout()
+
+
+plt.show()
+
+
+# ============================================================
+# 34. K-MEANS VS DBSCAN COMPARISON
+# ============================================================
+
+# Your K-Means result from the previous analysis
+
+kmeans_silhouette = 0.288755
+
+kmeans_clusters = 2
+
+
+comparison = pd.DataFrame({
+
+    'Model': [
+
+        'K-Means',
+
+        'DBSCAN'
+
+    ],
+
+    'Number_of_Clusters': [
+
+        kmeans_clusters,
+
+        n_dbscan_clusters
+
+    ],
+
+    'Silhouette_Score': [
+
+        kmeans_silhouette,
+
+        dbscan_silhouette
+
+    ],
+
+    'Noise_Percentage': [
+
+        0,
+
+        noise_percentage
+
+    ]
+
+})
+
+
+print("\n" + "=" * 70)
+
+print(
+    "K-MEANS VS DBSCAN"
+)
+
+print(
+    "=" * 70)
+
+
+print(
+    comparison.round(4)
+)
+
+
+# ============================================================
+# 35. DETERMINE BETTER MODEL
+# ============================================================
+
+if (
+    not np.isnan(dbscan_silhouette)
+    and
+    dbscan_silhouette >
+    kmeans_silhouette
+):
+
+    print(
+        "\nDBSCAN has the higher Silhouette Score."
+    )
+
+else:
+
+    print(
+        "\nK-Means has the higher Silhouette Score."
+    )
+
+
+# ============================================================
+# 36. SAVE DBSCAN RESULTS TO EXCEL
+# ============================================================
+
+output_file = (
+    "DBSCAN_customer_segmentation_results.xlsx"
+)
+
+
+with pd.ExcelWriter(
+    output_file,
+    engine='openpyxl'
+) as writer:
+
+
+    df.to_excel(
+
+        writer,
+
+        sheet_name='Customer_Data',
+
+        index=False
+
+    )
+
+
+    dbscan_results_sorted.to_excel(
+
+        writer,
+
+        sheet_name='DBSCAN_Parameters',
+
+        index=False
+
+    )
+
+
+    dbscan_profile.round(2).to_excel(
+
+        writer,
+
+        sheet_name='DBSCAN_Profile'
+
+    )
+
+
+    dbscan_size.to_excel(
+
+        writer,
+
+        sheet_name='DBSCAN_Cluster_Size',
+
+        index=False
+
+    )
+
+
+    comparison.to_excel(
+
+        writer,
+
+        sheet_name='Model_Comparison',
+
+        index=False
+
+    )
+
+
+print("\n" + "=" * 70)
+
+print(
+    "DBSCAN PROJECT COMPLETED"
+)
+
+print(
+    "=" * 70)
+
+
+print(
+    "Output file:",
+    output_file
+)
+
+
+print(
+    "Best eps:",
+    best_eps
+)
+
+
+print(
+    "Best min_samples:",
+    best_min_samples
+)
+
+
+print(
+    "DBSCAN clusters:",
+    n_dbscan_clusters
+)
+
+
+print(
+    "Noise percentage:",
+    round(
+        noise_percentage,
+        2
+    ),
+    "%"
+)
+
+
+print(
+    "DBSCAN Silhouette Score:",
+    round(
+        dbscan_silhouette,
+        4
+    )
+    if not np.isnan(
+        dbscan_silhouette
+    )
+    else "Not available"
+)
